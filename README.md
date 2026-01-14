@@ -15,54 +15,13 @@ Moving the ingress to a cheap VPS ($6/mo) solves this while keeping all services
 
 ### Before: Caddy at home
 
-```mermaid
-flowchart LR
-    User([User])
-
-    subgraph Tailnet
-        subgraph house[Old House]
-            Caddy[Caddy]
-        end
-        subgraph apt[Apartment]
-            Services[Services]
-        end
-    end
-
-    User -->|HTTPS| Caddy
-    Caddy -->|Tailscale| Services
-
-    style Caddy fill:#f66,stroke:#333
-    style Services fill:#6f6,stroke:#333
-```
+![Before: Caddy at home](docs/architecture-before.svg)
 
 Public traffic hits a residential IP. If the home network goes down or the ISP changes the IP, everything breaks.
 
 ### After: Caddy on Vultr VPS
 
-```mermaid
-flowchart LR
-    User([User])
-
-    subgraph Tailnet
-        subgraph vps[Vultr VPS]
-            Caddy[Caddy]
-        end
-        subgraph house[Old House]
-            OldServices[Services]
-        end
-        subgraph apt[Apartment]
-            Services[Services]
-        end
-    end
-
-    User -->|HTTPS| Caddy
-    Caddy -->|Tailscale| Services
-    Caddy -->|Tailscale| OldServices
-
-    style Caddy fill:#69f,stroke:#333
-    style Services fill:#6f6,stroke:#333
-    style OldServices fill:#6f6,stroke:#333
-```
+![After: Caddy on VPS](docs/architecture-after.svg)
 
 Public traffic hits a stable VPS with a static IP. Home services remain hidden inside the Tailscale network, accessible only via encrypted tunnels.
 

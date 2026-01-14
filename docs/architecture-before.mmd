@@ -1,0 +1,17 @@
+flowchart LR
+    User([User])
+
+    subgraph Tailnet
+        subgraph house[Old House]
+            Caddy[Caddy]
+        end
+        subgraph apt[Apartment]
+            Services[Services]
+        end
+    end
+
+    User -->|HTTPS| Caddy
+    Caddy -->|Tailscale| Services
+
+    style Caddy fill:#f66,stroke:#333
+    style Services fill:#6f6,stroke:#333

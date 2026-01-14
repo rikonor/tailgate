@@ -338,40 +338,38 @@ echo "Done! DNS propagation may take a few minutes."
 # === Docs ===
 
 [tasks.mermaid-check]
-description = "Verify Mermaid diagrams in README.md are valid"
+description = "Verify Mermaid diagrams are valid"
+run = """
+#!/usr/bin/env bash
+set -e
+errors=0
+
+for f in docs/*.mmd; do
+  if mmdc -i "$f" -o /tmp/mermaid-out.svg 2>/dev/null; then
+    echo "✓ $f"
+  else
+    echo "✗ $f"
+    errors=$((errors + 1))
+  fi
+done
+
+rm -f /tmp/mermaid-out.svg
+[ "$errors" -eq 0 ]
+"""
+
+[tasks.mermaid-render]
+description = "Render Mermaid diagrams to SVG"
 run = """
 #!/usr/bin/env bash
 set -e
 
-count=0
-errors=0
-in_block=false
-tmpfile=$(mktemp /tmp/mermaid-XXXXXX.mmd)
+for f in docs/*.mmd; do
+  out="${f%.mmd}.svg"
+  echo "Rendering $f -> $out"
+  mmdc -i "$f" -o "$out" -b transparent
+done
 
-while IFS= read -r line; do
-  if [ "$line" = '```mermaid' ]; then
-    in_block=true
-    > "$tmpfile"
-  elif [ "$line" = '```' ] && $in_block; then
-    in_block=false
-    count=$((count + 1))
-    if mmdc -i "$tmpfile" -o /tmp/mermaid-out.svg 2>/dev/null; then
-      echo "✓ Diagram $count: valid"
-    else
-      echo "✗ Diagram $count: invalid"
-      head -3 "$tmpfile"
-      errors=$((errors + 1))
-    fi
-  elif $in_block; then
-    echo "$line" >> "$tmpfile"
-  fi
-done < README.md
-
-rm -f "$tmpfile" /tmp/mermaid-out.svg
-
-echo ""
-echo "Checked $count diagrams, $errors errors"
-[ "$errors" -eq 0 ]
+echo "Done"
 """
 
 # === Cleanup ===
