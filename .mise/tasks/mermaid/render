@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+#MISE description="Render Mermaid diagrams to SVG"
+set -e
+
+for f in docs/*.mmd; do
+  out="${f%.mmd}.svg"
+  echo "Rendering $f -> $out"
+  mmdc -i "$f" -o "$out" -b transparent
+done
+
+echo "Done"

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Verify Mermaid diagrams are valid"
+set -e
+
+errors=0
+
+for f in docs/*.mmd; do
+  if mmdc -i "$f" -o /tmp/mermaid-out.svg 2>/dev/null; then
+    echo "✓ $f"
+  else
+    echo "✗ $f"
+    errors=$((errors + 1))
+  fi
+done
+
+rm -f /tmp/mermaid-out.svg
+[ "$errors" -eq 0 ]

@@ -23,8 +23,8 @@ mise run verify             # Health checks (SSH, Tailscale, Caddy, HTTP)
 mise run ssh                # Interactive SSH to VPS
 mise run dns-check          # Dry-run DNS changes
 mise run dns-update         # Apply DNS via Porkbun API
-mise run mermaid-check      # Validate Mermaid diagrams
-mise run mermaid-render     # Render .mmd to .svg
+mise run mermaid:check      # Validate Mermaid diagrams
+mise run mermaid:render     # Render .mmd to .svg
 mise run destroy            # Delete VPS (destructive)
 
 # Tailnet diagnostics (file-based tasks in .mise/tasks/)
