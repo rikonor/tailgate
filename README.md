@@ -1,12 +1,83 @@
-# Vultr Ingress Gateway
+# Tailgate
 
 A public ingress gateway for home lab services running on Tailscale. Traffic enters via public HTTPS, is terminated by Caddy, and routed over Tailscale to backend services.
 
-## Architecture
+## Why?
 
+Running a public-facing reverse proxy from a residential IP has drawbacks:
+- ISP IP changes break DNS
+- Home network exposed to internet traffic
+- Uptime tied to home infrastructure
+
+Moving the ingress to a cheap VPS ($6/mo) solves this while keeping all services safely inside a Tailscale network.
+
+## Before & After
+
+### Before: Caddy at home
+
+```mermaid
+flowchart LR
+    subgraph Internet
+        User([User])
+    end
+
+    subgraph Old House
+        Caddy[Caddy]
+    end
+
+    subgraph Apartment
+        Services[Services]
+    end
+
+    subgraph Tailnet
+        Old House ~~~ Apartment
+    end
+
+    User -->|HTTPS| Caddy
+    Caddy -->|Tailscale| Services
+
+    style Caddy fill:#f66,stroke:#333
+    style Services fill:#6f6,stroke:#333
 ```
-Internet → Vultr VPS (Caddy) → Tailscale → Home Services
+
+Public traffic hits a residential IP. If the home network goes down or the ISP changes the IP, everything breaks.
+
+### After: Caddy on Vultr VPS
+
+```mermaid
+flowchart LR
+    subgraph Internet
+        User([User])
+    end
+
+    subgraph Vultr[Vultr VPS]
+        Caddy[Caddy]
+    end
+
+    subgraph Old House
+        OldServices[Services]
+    end
+
+    subgraph Apartment
+        Services[Services]
+    end
+
+    subgraph Tailnet
+        Vultr ~~~ Old House ~~~ Apartment
+    end
+
+    User -->|HTTPS| Caddy
+    Caddy -->|Tailscale| Services
+    Caddy -->|Tailscale| OldServices
+
+    style Caddy fill:#69f,stroke:#333
+    style Services fill:#6f6,stroke:#333
+    style OldServices fill:#6f6,stroke:#333
 ```
+
+Public traffic hits a stable VPS with a static IP. Home services remain hidden inside the Tailscale network, accessible only via encrypted tunnels.
+
+## Architecture
 
 - **Provider:** Vultr (Atlanta region)
 - **OS:** Ubuntu 24.04 LTS
