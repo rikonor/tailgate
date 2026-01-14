@@ -98,6 +98,16 @@ mise run verify
 | `mise run dns-update` | Apply DNS changes via Porkbun API |
 | `mise run destroy` | Delete the VPS (destructive!) |
 
+### Tailnet Diagnostics
+
+| Task | Description |
+|------|-------------|
+| `mise run tailnet:status` | Show all tailnet devices with online/offline status |
+| `mise run tailnet:routes` | Show devices advertising subnet routes |
+| `mise run tailnet:ping-lan` | Ping LAN devices via subnet routing |
+| `mise run nas:status` | Check Tailscale status on Synology NAS |
+| `mise run nas:reauth` | Re-authenticate Tailscale on NAS with subnet routes |
+
 ## Configuration
 
 ### Environment Variables
@@ -180,6 +190,32 @@ ssh root@$VPS_IP "tailscale status"
 # Test backend connectivity
 ssh root@$VPS_IP "tailscale ping your-backend-hostname"
 ```
+
+### Subnet routing not working
+
+**Symptom:** Can't reach LAN devices (192.168.x.x) via Tailscale
+
+**Diagnosis:**
+```bash
+# Check which devices advertise routes
+mise run tailnet:routes
+
+# Test LAN connectivity
+mise run tailnet:ping-lan
+```
+
+**Common causes:**
+- Subnet router logged out (e.g., after Synology update)
+- Route not approved in Tailscale admin console
+
+**Fix for Synology NAS:**
+```bash
+export SYNOLOGY_PASS="your-password"
+mise run nas:status   # Check if logged out
+mise run nas:reauth   # Re-authenticate (opens browser URL)
+```
+
+Then approve the route at [https://login.tailscale.com/admin/machines](https://login.tailscale.com/admin/machines) if needed.
 
 ### Finding your SSH key ID
 

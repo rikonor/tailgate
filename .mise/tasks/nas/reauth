@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#MISE description="Re-authenticate Tailscale on NAS with subnet routes (interactive)"
+set -e
+
+: "${JUMPBOX_IP:?JUMPBOX_IP must be set}"
+: "${NAS_LAN_IP:?NAS_LAN_IP must be set}"
+: "${NAS_USER:?NAS_USER must be set}"
+: "${NAS_SUBNET:?NAS_SUBNET must be set (e.g. 192.168.1.0/24)}"
+: "${SYNOLOGY_PASS:?SYNOLOGY_PASS must be set}"
+
+NAS_TAILSCALE="/var/packages/Tailscale/target/bin/tailscale"
+
+echo "Re-authenticating Tailscale on NAS ($NAS_LAN_IP)..."
+echo "This will print a URL - open it in your browser to authenticate."
+echo ""
+
+ssh -o StrictHostKeyChecking=no "root@$JUMPBOX_IP" \
+  "sshpass -p '$SYNOLOGY_PASS' ssh -o StrictHostKeyChecking=no $NAS_USER@$NAS_LAN_IP 'echo \"$SYNOLOGY_PASS\" | sudo -S $NAS_TAILSCALE up --advertise-routes=$NAS_SUBNET'" 2>&1 | grep -v "Could not chdir"

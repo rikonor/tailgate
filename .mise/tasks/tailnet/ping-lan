@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Ping LAN devices via Tailscale subnet routing"
+set -e
+
+: "${LAN_HOSTS:?LAN_HOSTS must be set (comma-separated IPs)}"
+
+echo "Pinging LAN hosts via Tailscale subnet routing..."
+echo ""
+
+IFS=',' read -ra HOSTS <<< "$LAN_HOSTS"
+for host in "${HOSTS[@]}"; do
+  host=$(echo "$host" | xargs)  # trim whitespace
+  echo "=== $host ==="
+  ping -c 2 -W 2 "$host" 2>/dev/null && echo "OK" || echo "UNREACHABLE"
+  echo ""
+done

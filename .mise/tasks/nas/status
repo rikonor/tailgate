@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#MISE description="Check Tailscale status on Synology NAS"
+set -e
+
+: "${JUMPBOX_IP:?JUMPBOX_IP must be set}"
+: "${NAS_LAN_IP:?NAS_LAN_IP must be set}"
+: "${NAS_USER:?NAS_USER must be set}"
+: "${SYNOLOGY_PASS:?SYNOLOGY_PASS must be set}"
+
+NAS_TAILSCALE="/var/packages/Tailscale/target/bin/tailscale"
+
+echo "Checking Tailscale status on NAS ($NAS_LAN_IP) via jump box..."
+echo ""
+
+ssh -o StrictHostKeyChecking=no "root@$JUMPBOX_IP" \
+  "sshpass -p '$SYNOLOGY_PASS' ssh -o StrictHostKeyChecking=no $NAS_USER@$NAS_LAN_IP '$NAS_TAILSCALE status'" 2>&1 | grep -v "Could not chdir"

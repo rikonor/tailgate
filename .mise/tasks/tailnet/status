@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+#MISE description="Show all tailnet devices with online/offline status"
+set -e
+
+tailscale status

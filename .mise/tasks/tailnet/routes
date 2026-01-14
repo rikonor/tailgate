@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+#MISE description="Show devices advertising subnet routes"
+set -e
+
+echo "Subnet route advertisers:"
+echo ""
+
+tailscale status --json | jq -r '
+  .Peer | to_entries[] |
+  select(.value.PrimaryRoutes != null and (.value.PrimaryRoutes | length) > 0) |
+  "\(.value.HostName)\t\(if .value.Online then "online" else "OFFLINE" end)\t\(.value.PrimaryRoutes | join(", "))"
+' | column -t -s $'\t'

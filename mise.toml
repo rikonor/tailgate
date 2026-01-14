@@ -19,6 +19,18 @@ VPS_IP = "96.30.196.70"
 # Backend service to proxy to (Tailscale IP:port)
 # BACKEND_TARGET = "100.x.x.x:8080"
 
+# === Tailnet Diagnostics ===
+# Jump box for reaching LAN devices (media server Tailscale IP)
+JUMPBOX_IP = "100.85.66.35"
+# LAN hosts to ping (comma-separated)
+LAN_HOSTS = "192.168.1.66,192.168.1.118,192.168.1.119"
+
+# === NAS Configuration ===
+NAS_LAN_IP = "192.168.1.66"
+NAS_USER = "rikonor"
+NAS_SUBNET = "192.168.1.0/24"
+# SYNOLOGY_PASS - set in environment, not in file
+
 # === Phase 1: Provision ===
 
 [tasks.provision]
