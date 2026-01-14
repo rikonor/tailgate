@@ -1,0 +1,19 @@
+flowchart LR
+    subgraph apt[Apartment]
+        Mac[MacBook]
+    end
+
+    subgraph house[Old House - 192.168.1.0/24]
+        NAS[NAS<br/>Subnet Router]
+        Media[Media Server<br/>.119]
+        ETH[ETH Server<br/>.118]
+    end
+
+    Mac -->|Tailscale| NAS
+    NAS -.->|LAN| Media
+    NAS -.->|LAN| ETH
+
+    style NAS fill:#69f,stroke:#333
+    style Media fill:#6f6,stroke:#333
+    style ETH fill:#6f6,stroke:#333
+    style Mac fill:#f9f,stroke:#333

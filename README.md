@@ -25,6 +25,12 @@ Public traffic hits a residential IP. If the home network goes down or the ISP c
 
 Public traffic hits a stable VPS with a static IP. Home services remain hidden inside the Tailscale network, accessible only via encrypted tunnels.
 
+### Subnet Routing
+
+![Subnet Routing](docs/subnet-routing.svg)
+
+The NAS acts as a Tailscale subnet router, advertising `192.168.1.0/24`. This allows devices on the tailnet (e.g., MacBook in apartment) to reach LAN devices at the old house (media server, ETH server) without those devices needing Tailscale installed.
+
 ## Architecture
 
 - **Provider:** Vultr (Atlanta region)
