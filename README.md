@@ -17,20 +17,15 @@ Moving the ingress to a cheap VPS ($6/mo) solves this while keeping all services
 
 ```mermaid
 flowchart LR
-    subgraph Internet
-        User([User])
-    end
-
-    subgraph Old House
-        Caddy[Caddy]
-    end
-
-    subgraph Apartment
-        Services[Services]
-    end
+    User([User])
 
     subgraph Tailnet
-        Old House ~~~ Apartment
+        subgraph house[Old House]
+            Caddy[Caddy]
+        end
+        subgraph apt[Apartment]
+            Services[Services]
+        end
     end
 
     User -->|HTTPS| Caddy
@@ -46,24 +41,18 @@ Public traffic hits a residential IP. If the home network goes down or the ISP c
 
 ```mermaid
 flowchart LR
-    subgraph Internet
-        User([User])
-    end
-
-    subgraph Vultr[Vultr VPS]
-        Caddy[Caddy]
-    end
-
-    subgraph Old House
-        OldServices[Services]
-    end
-
-    subgraph Apartment
-        Services[Services]
-    end
+    User([User])
 
     subgraph Tailnet
-        Vultr ~~~ Old House ~~~ Apartment
+        subgraph vps[Vultr VPS]
+            Caddy[Caddy]
+        end
+        subgraph house[Old House]
+            OldServices[Services]
+        end
+        subgraph apt[Apartment]
+            Services[Services]
+        end
     end
 
     User -->|HTTPS| Caddy
