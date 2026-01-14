@@ -1,2 +1,350 @@
 [tools]
 vultr = "latest"
+
+[env]
+VPS_REGION = "atl"
+VPS_PLAN = "vhf-1c-1gb"
+VPS_OS = "2284"  # Ubuntu 24.04 LTS x64
+VPS_LABEL = "ingress-gateway"
+VPS_SSH_KEY = "3490893a-006e-451c-9478-b5d0b42b1a5e"
+
+# Set after provisioning
+VPS_ID = "41575045-83d6-47d1-ae7c-759352481f05"
+VPS_IP = "96.30.196.70"
+
+# Tailscale auth key (set before running configure)
+# TS_AUTHKEY = ""
+
+# Backend service to proxy to (Tailscale IP:port)
+# BACKEND_TARGET = "100.x.x.x:8080"
+
+# === Phase 1: Provision ===
+
+[tasks.provision]
+description = "Create Vultr VPS instance"
+run = """
+vultr-cli instance create \
+  --region $VPS_REGION \
+  --plan $VPS_PLAN \
+  --os $VPS_OS \
+  --ssh-keys $VPS_SSH_KEY \
+  --label $VPS_LABEL \
+  --host $VPS_LABEL
+"""
+
+[tasks.wait-ready]
+description = "Wait for VPS to become active"
+run = """
+echo "Waiting for instance $VPS_ID to become ready..."
+while true; do
+  info=$(vultr-cli instance get $VPS_ID 2>/dev/null)
+  status=$(echo "$info" | grep "^STATUS" | awk '{print $2}')
+  state=$(echo "$info" | grep "^SERVER STATE" | awk '{print $3}')
+  ip=$(echo "$info" | grep "^MAIN IP" | awk '{print $3}')
+  echo "Status: $status, State: $state, IP: $ip"
+  if [ "$status" = "active" ] && [ "$state" = "ok" ] && [ "$ip" != "0.0.0.0" ]; then
+    echo "Instance is ready at $ip"
+    break
+  fi
+  sleep 10
+done
+"""
+
+[tasks.ssh]
+description = "SSH into the VPS"
+run = "ssh -o StrictHostKeyChecking=no root@$VPS_IP"
+
+# === Phase 2: System Configuration ===
+
+[tasks.configure]
+description = "Full system configuration (updates, BBR, Tailscale, Caddy)"
+run = """
+ssh -o StrictHostKeyChecking=no root@$VPS_IP 'bash -s' << 'REMOTE'
+set -e
+
+echo "=== Updating system packages ==="
+apt-get update && apt-get upgrade -y
+
+echo "=== Enabling BBR congestion control ==="
+cat >> /etc/sysctl.conf << EOF
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+EOF
+sysctl -p
+
+echo "=== Installing Tailscale ==="
+curl -fsSL https://tailscale.com/install.sh | sh
+
+echo "=== Installing Caddy ==="
+apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+apt-get update
+apt-get install -y caddy
+
+echo "=== Configuring firewall ==="
+ufw allow 22/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 8448/tcp
+ufw --force enable
+
+echo "=== Configuration complete ==="
+echo "Next steps:"
+echo "1. Run: mise run tailscale-up"
+echo "2. Run: mise run setup-caddy"
+REMOTE
+"""
+
+[tasks.tailscale-up]
+description = "Authenticate Tailscale (requires TS_AUTHKEY)"
+run = """
+if [ -z "$TS_AUTHKEY" ]; then
+  echo "Error: TS_AUTHKEY not set. Generate one at https://login.tailscale.com/admin/settings/keys"
+  exit 1
+fi
+ssh -o StrictHostKeyChecking=no root@$VPS_IP "tailscale up --authkey=$TS_AUTHKEY"
+echo "Tailscale connected!"
+ssh -o StrictHostKeyChecking=no root@$VPS_IP "tailscale status"
+"""
+
+# === Phase 3: Caddy Configuration ===
+
+[tasks.setup-caddy]
+description = "Deploy Caddyfile to VPS"
+run = """
+ssh -o StrictHostKeyChecking=no root@$VPS_IP "bash -s" << 'REMOTE'
+cat > /etc/caddy/Caddyfile << 'EOF'
+(matrix_well_known) {
+  @matrix_server path /.well-known/matrix/server
+  header @matrix_server Content-Type application/json
+  header @matrix_server Access-Control-Allow-Origin *
+  respond @matrix_server `{"m.server":"matrix.ricon.family:443"}`
+
+  @matrix_client path /.well-known/matrix/client
+  header @matrix_client Content-Type application/json
+  header @matrix_client Access-Control-Allow-Origin *
+  respond @matrix_client `{"m.homeserver":{"base_url":"https://matrix.ricon.family"}}`
+}
+
+ricon.family {
+  import matrix_well_known
+  reverse_proxy ricon-family-website:8080
+}
+
+ricon.family:8448 {
+  @admin path /_synapse/admin*
+  respond @admin "Forbidden" 403
+
+  reverse_proxy /_matrix/* synapse:8008
+}
+
+matrix.ricon.family {
+  @admin path /_synapse/admin*
+  respond @admin "Forbidden" 403
+
+  reverse_proxy /_matrix/* synapse:8008
+  reverse_proxy /_synapse/client/* synapse:8008
+}
+
+or-ricon.com {
+  reverse_proxy or-ricon-website:8080
+}
+EOF
+
+echo "Validating Caddyfile..."
+caddy validate --config /etc/caddy/Caddyfile
+
+echo "Restarting Caddy..."
+systemctl restart caddy
+systemctl status caddy --no-pager
+REMOTE
+"""
+
+# === Phase 4: Verification ===
+
+[tasks.verify]
+description = "Verify the setup is working"
+run = """
+echo "=== VPS Status ==="
+vultr-cli instance get $VPS_ID | grep -E "^(STATUS|MAIN IP|SERVER STATE)"
+
+echo ""
+echo "=== SSH Connectivity ==="
+ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 root@$VPS_IP "echo 'SSH OK'"
+
+echo ""
+echo "=== Tailscale Status ==="
+ssh -o StrictHostKeyChecking=no root@$VPS_IP "tailscale status" || echo "Tailscale not configured yet"
+
+echo ""
+echo "=== Caddy Status ==="
+ssh -o StrictHostKeyChecking=no root@$VPS_IP "systemctl is-active caddy" || echo "Caddy not running"
+
+echo ""
+echo "=== HTTP Test ==="
+curl -s -o /dev/null -w "HTTP %{http_code}" http://$VPS_IP || echo "HTTP test failed"
+
+echo ""
+echo ""
+echo "Remember to point your DNS A record to: $VPS_IP"
+"""
+
+# === DNS Configuration ===
+
+[tasks.dns-check]
+description = "Show current DNS records vs planned changes (dry run)"
+run = """
+if [ -z "$PORKBUN_API_KEY" ] || [ -z "$PORKBUN_SECRET_KEY" ]; then
+  echo "Error: PORKBUN_API_KEY and PORKBUN_SECRET_KEY must be set"
+  exit 1
+fi
+
+API="https://api.porkbun.com/api/json/v3"
+
+get_a_records() {
+  domain=$1
+  fqdn=$2
+
+  auth=$(printf '{"apikey":"%s","secretapikey":"%s"}' "$PORKBUN_API_KEY" "$PORKBUN_SECRET_KEY")
+  records=$(curl -s -X POST "$API/dns/retrieve/$domain" \
+    -H "Content-Type: application/json" \
+    -d "$auth")
+
+  # Find A records matching this FQDN and return their IPs
+  echo "$records" | grep -o '{[^}]*}' | while read -r record; do
+    rec_type=$(echo "$record" | grep -o '"type":"[^"]*"' | cut -d'"' -f4)
+    rec_name=$(echo "$record" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+    rec_content=$(echo "$record" | grep -o '"content":"[^"]*"' | cut -d'"' -f4)
+    if [ "$rec_type" = "A" ] && [ "$rec_name" = "$fqdn" ]; then
+      echo "$rec_content"
+    fi
+  done
+}
+
+check_record() {
+  domain=$1
+  fqdn=$2
+  target_ip=$3
+
+  current=$(get_a_records "$domain" "$fqdn" | tr '\n' ',' | sed 's/,$//')
+  [ -z "$current" ] && current="(not set)"
+
+  if [ "$current" = "$target_ip" ]; then
+    echo "  $fqdn: $current (no change)"
+  elif [ "$current" = "(not set)" ]; then
+    echo "  $fqdn: $current -> $target_ip (CREATE)"
+  else
+    echo "  $fqdn: $current -> $target_ip (DELETE + CREATE)"
+  fi
+}
+
+echo "DNS Dry Run - Target IP: $VPS_IP"
+echo ""
+echo "Planned changes:"
+check_record "ricon.family" "ricon.family" "$VPS_IP"
+check_record "ricon.family" "matrix.ricon.family" "$VPS_IP"
+check_record "or-ricon.com" "or-ricon.com" "$VPS_IP"
+echo ""
+echo "Run 'mise run dns-update' to apply these changes."
+"""
+
+[tasks.dns-update]
+description = "Update DNS A records via Porkbun API"
+run = """
+if [ -z "$PORKBUN_API_KEY" ] || [ -z "$PORKBUN_SECRET_KEY" ]; then
+  echo "Error: PORKBUN_API_KEY and PORKBUN_SECRET_KEY must be set"
+  echo "Get your keys at: https://porkbun.com/account/api"
+  exit 1
+fi
+
+API="https://api.porkbun.com/api/json/v3"
+
+# Update a single A record: retrieve -> delete old -> create new
+update_record() {
+  domain=$1
+  fqdn=$2
+  ip=$3
+
+  echo "Updating $fqdn -> $ip"
+
+  # Build auth JSON using printf to avoid TOML escaping issues
+  auth=$(printf '{"apikey":"%s","secretapikey":"%s"}' "$PORKBUN_API_KEY" "$PORKBUN_SECRET_KEY")
+
+  # Retrieve all records for domain
+  records=$(curl -s -X POST "$API/dns/retrieve/$domain" \
+    -H "Content-Type: application/json" \
+    -d "$auth")
+
+  # Find existing A record IDs for this FQDN
+  # Extract records array, find A records matching our FQDN
+  ids=$(echo "$records" | grep -o '{[^}]*}' | while read -r record; do
+    rec_type=$(echo "$record" | grep -o '"type":"[^"]*"' | cut -d'"' -f4)
+    rec_name=$(echo "$record" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+    rec_id=$(echo "$record" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+    if [ "$rec_type" = "A" ] && [ "$rec_name" = "$fqdn" ]; then
+      echo "$rec_id"
+    fi
+  done)
+
+  # Delete existing A records
+  if [ -n "$ids" ]; then
+    for id in $ids; do
+      echo "  Deleting old record (id: $id)..."
+      curl -s -X POST "$API/dns/delete/$domain/$id" \
+        -H "Content-Type: application/json" \
+        -d "$auth" > /dev/null
+    done
+  fi
+
+  # Create new record
+  # For subdomain, extract it from FQDN by removing domain suffix
+  if [ "$fqdn" = "$domain" ]; then
+    subdomain=""
+  else
+    subdomain="${fqdn%.$domain}"
+  fi
+
+  create_payload=$(printf '{"apikey":"%s","secretapikey":"%s","name":"%s","type":"A","content":"%s","ttl":"600"}' \
+    "$PORKBUN_API_KEY" "$PORKBUN_SECRET_KEY" "$subdomain" "$ip")
+
+  result=$(curl -s -X POST "$API/dns/create/$domain" \
+    -H "Content-Type: application/json" \
+    -d "$create_payload")
+
+  status=$(echo "$result" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+
+  if [ "$status" = "SUCCESS" ]; then
+    echo "  ✓ Created record"
+    return 0
+  else
+    echo "  ✗ Failed: $result"
+    return 1
+  fi
+}
+
+echo "Updating DNS records to point to $VPS_IP"
+echo ""
+
+update_record "ricon.family" "ricon.family" "$VPS_IP"
+update_record "ricon.family" "matrix.ricon.family" "$VPS_IP"
+update_record "or-ricon.com" "or-ricon.com" "$VPS_IP"
+
+echo ""
+echo "Done! DNS propagation may take a few minutes."
+"""
+
+# === Cleanup ===
+
+[tasks.destroy]
+description = "Destroy the VPS instance (DANGEROUS)"
+run = """
+echo "This will DESTROY instance $VPS_ID ($VPS_IP)"
+read -p "Type 'yes' to confirm: " confirm
+if [ "$confirm" = "yes" ]; then
+  vultr-cli instance delete $VPS_ID
+  echo "Instance destroyed"
+else
+  echo "Aborted"
+fi
+"""
